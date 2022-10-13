@@ -1,8 +1,12 @@
 #!/bin/bash
 
-function usage {
-	echo "Usage: tpcds-setup.sh scale_factor [temp_directory]"
-	exit 1
+function usage() {
+	   echo ""
+	   echo "Usage: tpcds-setup.sh -s SCALE -d DIR -h HIVE"
+	   echo -e "\t-s Scale factor"
+	   echo -e "\t-d Temp Directory"
+	   echo -e "\t-h Hive JDBC URL"
+	   exit 1 # Exit script after printing help
 }
 
 function runcommand {
@@ -27,9 +31,19 @@ fi
 DIMS="date_dim time_dim item customer customer_demographics household_demographics customer_address store promotion warehouse ship_mode reason income_band call_center web_page catalog_page web_site"
 FACTS="store_sales store_returns web_sales web_returns catalog_sales catalog_returns inventory"
 
+
 # Get the parameters.
-SCALE=$1
-DIR=$2
+# Get the parameters.
+while getopts "s:d:h:" opt
+  do
+     case "$opt" in
+        s ) SCALE="$OPTARG" ;;
+	d ) DIR="$OPTARG" ;;
+	h ) HIVE="$OPTARG" ;;
+	? ) usage ;; # Print helpFunction in case parameter is non-existent
+     esac
+done
+
 if [ "X$BUCKET_DATA" != "X" ]; then
 	BUCKETS=13
 	RETURN_BUCKETS=13
@@ -42,11 +56,17 @@ if [ "X$DEBUG_SCRIPT" != "X" ]; then
 fi
 
 # Sanity checking.
-if [ X"$SCALE" = "X" ]; then
+if [ -z "$SCALE" ] 
+then
 	usage
 fi
-if [ X"$DIR" = "X" ]; then
+if [ -z "$DIR" ] 
+then
 	DIR=/tmp/tpcds-generate
+fi
+if [ -z "$HIVE" ] 
+then
+	HIVE="beeline -n hive -u 'jdbc:hive2://localhost:2181/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2?tez.queue.name=default' "
 fi
 if [ $SCALE -eq 1 ]; then
 	echo "Scale factor must be greater than 1"
@@ -70,7 +90,6 @@ hadoop fs -chmod -R 777  ${DIR}/${SCALE}
 
 echo "TPC-DS text data generation complete."
 
-HIVE="beeline -n hive -u 'jdbc:hive2://localhost:2181/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2?tez.queue.name=default' "
 
 # Create the text/flat tables as external tables. These will be later be converted to ORCFile.
 echo "Loading text data into external tables."
@@ -98,7 +117,7 @@ REDUCERS=$((test ${SCALE} -gt ${MAX_REDUCERS} && echo ${MAX_REDUCERS}) || echo $
 # Populate the smaller tables.
 for t in ${DIMS}
 do
-	COMMAND="$HIVE  -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
+	COMMAND="$HIVE -f ddl-tpcds/bin_partitioned/${t}.sql \
 	    --hivevar DB=${DATABASE} --hivevar SOURCE=tpcds_text_${SCALE} \
             --hivevar SCALE=${SCALE} \
 	    --hivevar REDUCERS=${REDUCERS} \
@@ -109,7 +128,7 @@ done
 
 for t in ${FACTS}
 do
-	COMMAND="$HIVE  -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
+	COMMAND="$HIVE -f ddl-tpcds/bin_partitioned/${t}.sql \
 	    --hivevar DB=${DATABASE} \
             --hivevar SCALE=${SCALE} \
 	    --hivevar SOURCE=tpcds_text_${SCALE} --hivevar BUCKETS=${BUCKETS} \
@@ -121,7 +140,7 @@ done
 make -j 1 -f $LOAD_FILE
 
 
-echo "Loading constraints"
+echo "Loading constraints ${DATABASE}"
 runcommand "$HIVE -f ddl-tpcds/bin_partitioned/add_constraints.sql --hivevar DB=${DATABASE}"
 
 echo "Data loaded into database ${DATABASE}."
