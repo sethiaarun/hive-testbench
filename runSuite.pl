@@ -15,6 +15,7 @@ my $SCRIPT_PATH = dirname( __FILE__ );
 dieWithUsage("one or more parameters not defined") unless @ARGV >= 1;
 my $suite = shift;
 my $scale = shift || 2;
+my $hive  = shift || "hive";
 dieWithUsage("suite name required") unless $suite eq "tpcds" or $suite eq "tpch";
 
 chdir $SCRIPT_PATH;
@@ -66,7 +67,7 @@ sub dieWithUsage(;$) {
 
 	print STDERR <<USAGE;
 ${err}Usage:
-	perl ${SCRIPT_NAME} [tpcds|tpch] [scale]
+	perl ${SCRIPT_NAME} [tpcds|tpch] [scale] [hive cmd]
 
 Description:
 	This script runs the sample queries and outputs a CSV file of the time it took each query to run.  Also, all hive output is kept as a log file named 'queryXX.sql.log' for each query file of the form 'queryXX.sql'. Defaults to scale of 2.
